@@ -44,6 +44,11 @@
 // ffmpeg
 #ifdef SUPPORT_FFMEPG
 #include <libffmpegthumbnailer/videothumbnailer.h>
+extern "C"{
+#include "libavformat/avformat.h"
+#include <libswscale/swscale.h>
+#include <libavcodec/avcodec.h>
+}
 #endif
 
 #include <DThumbnailProvider>
@@ -162,7 +167,7 @@ bool DThumbnailProvider::hasThumbnail(const QFileInfo &info) const
     if (mime.name().startsWith("video/") && FileUtils::isGvfsMountFile(info.absoluteFilePath()))
         return false;
 
-    if (fileSize > sizeLimit(mime) && !mime.name().startsWith("video/"))
+    if (fileSize > sizeLimit(mime) && (!mime.name().startsWith("video/") || !mime.name().startsWith("audio")))
         return false;
 
     return hasThumbnail(mime);
@@ -189,9 +194,8 @@ bool DThumbnailProvider::hasThumbnail(const QMimeType &mimeType) const
     if (DThumbnailProviderPrivate::hasThumbnailMimeHash.contains(mime))
         return true;
 
-    if (Q_LIKELY(mime.startsWith("image") || mime.startsWith("video/"))) {
+    if (Q_LIKELY(mime.startsWith("image") || mime.startsWith("video/") || mime.startsWith("audio"))) {
         DThumbnailProviderPrivate::hasThumbnailMimeHash.insert(mime);
-
         return true;
     }
 
@@ -419,6 +423,29 @@ QString DThumbnailProvider::createThumbnail(const QFileInfo &info, DThumbnailPro
             d->errorString = e.what();
             goto _return;
         }
+    } else if(mime.name().startsWith("audio")){
+        AVFormatContext *fmt_ctx = NULL;
+        av_register_all();
+        if ((avformat_open_input(&fmt_ctx, absoluteFilePath.toLocal8Bit().constData(), NULL, NULL))){
+            d->errorString = "Fail to open audio file";
+            goto _return;
+        }
+
+        // read the format headers
+        if (fmt_ctx->iformat->read_header(fmt_ctx) < 0) {
+            d->errorString = "No header reading from this audio file";
+            goto _return;
+        }
+        for (int i = 0; i < fmt_ctx->nb_streams; i++){
+            if (fmt_ctx->streams[i]->disposition & AV_DISPOSITION_ATTACHED_PIC) {
+                AVPacket pkt = fmt_ctx->streams[i]->attached_pic;
+                QImage img = QImage::fromData((uchar*)pkt.data, pkt.size);
+                *image = img.scaled(QSize(size,size), Qt::KeepAspectRatio, Qt::SmoothTransformation);
+                break;
+            }
+        }
+
+        avformat_close_input(&fmt_ctx);
     }
 #endif
     else {

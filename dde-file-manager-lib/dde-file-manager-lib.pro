@@ -14,6 +14,8 @@ QT       += gui-private
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
+LIBS+= -lavformat  -lavcodec -lavutil -lz  -lswscale -lavutil -lm -llzma -lswresample
+
 TARGET = $$ProjectName
 
 TEMPLATE = lib
