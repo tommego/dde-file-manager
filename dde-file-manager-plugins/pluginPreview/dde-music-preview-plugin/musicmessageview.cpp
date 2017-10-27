@@ -23,6 +23,12 @@
 #include <QMediaPlayer>
 #include <QMediaMetaData>
 
+extern "C"{
+#include "libavformat/avformat.h"
+#include <libswscale/swscale.h>
+#include <libavcodec/avcodec.h>
+}
+
 MusicMessageView::MusicMessageView(const QString& uri, QWidget *parent) :
     QFrame(parent),
     m_uri(uri)
@@ -57,6 +63,33 @@ void MusicMessageView::initUI()
             if(img.isNull()){
                 img = QImage(":/icons/icons/default_music_cover.png");
             }
+
+            AVFormatContext *fmt_ctx = NULL;
+            av_register_all();
+            bool ret = true;
+            if ((avformat_open_input(&fmt_ctx, QUrl::fromUserInput(m_uri).toLocalFile().toLocal8Bit().constData(), NULL, NULL))){
+                ret = false;
+            }
+
+            // read the format headers
+            if (fmt_ctx->iformat->read_header(fmt_ctx) < 0) {
+                ret = false;
+            }
+
+            if(ret){
+                for (int i = 0; i < fmt_ctx->nb_streams; i++){
+                    if (fmt_ctx->streams[i]->disposition & AV_DISPOSITION_ATTACHED_PIC) {
+                        AVPacket pkt = fmt_ctx->streams[i]->attached_pic;
+                        img = QImage::fromData((uchar*)pkt.data, pkt.size);
+                        img = img.scaled(QSize(256, 256), Qt::KeepAspectRatio, Qt::SmoothTransformation);
+                        m_imgLabel->setPixmap(QPixmap::fromImage(img));
+                        break;
+                    }
+                }
+            }
+
+            avformat_close_input(&fmt_ctx);
+
             m_imgLabel->setPixmap(QPixmap::fromImage(img));
             m_imgLabel->setFixedSize(img.size());
             player->deleteLater();

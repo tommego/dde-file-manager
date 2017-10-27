@@ -15,6 +15,8 @@ CONFIG += plugin link_pkgconfig
 
 include(../../../common/common.pri)
 
+LIBS+= -lavformat  -lavcodec -lavutil -lz  -lswscale -lavutil -lm -llzma -lswresample
+
 SOURCES += \
     toolbarframe.cpp \
     musicmessageview.cpp \
